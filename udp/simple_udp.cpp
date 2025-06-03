@@ -1,3 +1,7 @@
+/**
+ * Simple UDP socket interface for cross-platform use.
+ * Distributed under MIT Software License
+ */
 #include "simple_udp.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,20 +44,26 @@ static int get_oserror() noexcept
 #endif
 }
 
-IpAddress::IpAddress(const char* addr_string, uint16_t port) noexcept : port{port}
+static void set_oserror(int err) noexcept
 {
-    if (!addr_string || !addr_string)
+#if _WIN32
+    WSASetLastError(err);
+#else
+    errno = err;
+#endif
+}
+
+IpAddress::IpAddress(const char* addr_string, uint16_t port) noexcept
+    : port{port}
+{
+    if (!addr_string || *addr_string == '\0')
     {
-        addr = INADDR_ANY; // bind to all interfaces
+        addr = INADDR_ANY; // bind to any interface
     }
-    else
+    else if (!inet_pton(AF_INET, addr_string, &addr_parts))
     {
-        addr = inet_addr(addr_string);
-        if (addr == INADDR_NONE)
-        {
-            addr = 0;
-            UdpSocket::print_error(get_oserror(), "failed to parse address: %s", addr_string);
-        }
+        addr = 0;
+        UdpSocket::print_error(get_oserror(), "failed to parse address: %s", addr_string);
     }
 }
 
@@ -94,14 +104,14 @@ bool UdpSocket::create(const IpAddress& local_addr, bool blocking) noexcept
     // only recreate handle if needed (useful for port scanning)
     if (!is_valid())
     {
-        if ((socket = ::socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
+        if ((socket = (int)::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
         {
             print_error(get_oserror(), "socket creation failed");
             return false;
         }
 
         int reuse = 1;
-        if (set_opt(SOL_SOCKET, SO_REUSEADDR, reuse) < 0)
+        if (!set_opt(SOL_SOCKET, SO_REUSEADDR, reuse))
         {
             print_error(get_oserror(), "set SO_REUSEADDR failed");
             // it's not a fatal error
@@ -214,7 +224,7 @@ int UdpSocket::get_buf_size(bool rcv_buf) const noexcept
     return buf_size;
 }
 
-int UdpSocket::sendto(const void* data, int size, const IpAddress& to) noexcept
+int UdpSocket::sendto(const void* data, size_t size, const IpAddress& to) noexcept
 {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -222,14 +232,14 @@ int UdpSocket::sendto(const void* data, int size, const IpAddress& to) noexcept
     addr.sin_addr.s_addr = to.addr;
     addr.sin_port        = htons(to.port);
     memset(addr.sin_zero, 0, sizeof(addr.sin_zero));
-    return ::sendto(socket, (const char*)data, size, 0, (struct sockaddr*)&addr, sizeof(addr));
+    return ::sendto(socket, (const char*)data, (int)size, 0, (struct sockaddr*)&addr, sizeof(addr));
 }
 
-int UdpSocket::recvfrom(void* buffer, int maxsize, IpAddress& from) noexcept
+int UdpSocket::recvfrom(void* buffer, size_t maxsize, IpAddress& from) noexcept
 {
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
-    int size = ::recvfrom(socket, (char*)buffer, maxsize, 0, (struct sockaddr*)&addr, &addr_len);
+    int size = ::recvfrom(socket, (char*)buffer, (int)maxsize, 0, (struct sockaddr*)&addr, &addr_len);
     if (size > 0)
     {
         from.addr = addr.sin_addr.s_addr;
@@ -268,7 +278,9 @@ bool UdpSocket::set_opt(int level, int option, int value) noexcept
     if (socket < 0) return false;
     if (setsockopt(socket, level, option, (const char*)&value, sizeof(value)) < 0)
     {
-        print_error(get_oserror(), "setsockopt %d:%d failed", option, value);
+        int err = get_oserror();
+        print_error(err, "setsockopt %d:%d failed", option, value);
+        set_oserror(err); // restore os error code
         return false;
     }
     return true;
@@ -281,7 +293,9 @@ int UdpSocket::get_opt(int level, int option) const noexcept
     socklen_t len = sizeof(value);
     if (getsockopt(socket, level, option, (char*)&value, &len) < 0)
     {
-        print_error(get_oserror(), "getsockopt %d failed", option);
+        int err = get_oserror();
+        print_error(err, "getsockopt %d failed", option);
+        set_oserror(err); // restore os error code
         return -1;
     }
     return value;

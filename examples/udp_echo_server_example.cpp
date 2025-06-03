@@ -1,3 +1,9 @@
+/**
+ * Example of an UDP echo server and client using Simple UDP library.
+ * The server listens for incoming messages and echoes them back to the sender.
+ * 
+ * Distributed under MIT Software License
+ */
 #include <udp/simple_udp.h>
 #include <thread>
 #include <future>
@@ -10,12 +16,14 @@
 
 #define GREEN(x) "\033[32m" x "\033[0m"
 #define BLUE(x)  "\033[34m" x "\033[0m"
+#define RED(x)   "\033[31m" x "\033[0m"
 
 #define SERVER_LOG(fmt, ...) printf( BLUE("UDP server " fmt "\n"), ##__VA_ARGS__)
 #define CLIENT_LOG(fmt, ...) printf(GREEN("UDP client " fmt "\n"), ##__VA_ARGS__)
 
 static std::atomic_bool g_is_running;
 
+// close gracefully on Ctrl+C or SIGTERM by setting global running flag to false
 static void signal_handler(int signum)
 {
     if (signum == SIGINT || signum == SIGTERM)
@@ -32,9 +40,15 @@ using namespace std::chrono_literals;
 
 static std::string format_time(const time_point& tp)
 {
-    std::time_t tt = time_source::to_time_t(tp);
+    time_t tt = time_source::to_time_t(tp);
+    #if _MSC_VER
+        struct tm local_tm;
+        localtime_s(&local_tm, &tt); // convert to local time
+    #else
+        struct tm local_tm = *localtime(&tt);
+    #endif
     char buffer[64];
-    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", std::localtime(&tt));
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &local_tm);
     return std::string(buffer);
 }
 
@@ -138,8 +152,8 @@ static void client_runner(int client_port, IpAddress server_address)
 
 int main(int argc, char* argv[])
 {
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+    signal(SIGINT, &signal_handler);
+    signal(SIGTERM, &signal_handler);
 
     const int server_port = 12345;
     const int client_port = 12346;
@@ -157,7 +171,7 @@ int main(int argc, char* argv[])
         std::this_thread::sleep_for(15ms);
 
         // run client on main thread
-        client_runner(client_port, IpAddress{server_port});
+        client_runner(client_port, IpAddress{"127.0.0.1", server_port});
 
         // wait for server to finish
         server_task.get();
@@ -165,7 +179,7 @@ int main(int argc, char* argv[])
     catch (const std::exception& e)
     {
         g_is_running = false;
-        fprintf(stderr, "Exception: %s\n", e.what());
+        fprintf(stderr, RED("Exception: %s") "\n", e.what());
         if (server_task.valid())
             server_task.wait(); // ensure server task is cleaned up
         return 1;

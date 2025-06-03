@@ -1,9 +1,14 @@
+/**
+ * Simple UDP socket interface for cross-platform use.
+ * Distributed under MIT Software License
+ */
 #pragma once
 #include <stdint.h>
+#include <stddef.h> // size_t
 #include <string>
 
 /**
- * @brief A simple IpAddress structure
+ * @brief A simple IpAddress structure, example usage: IpAddress{"127.0.0.1", 5600}
  */
 struct IpAddress
 {
@@ -127,7 +132,7 @@ public:
      * @param to The destination address and port.
      * @return The number of bytes sent, or -1 on error.
      */
-    int sendto(const void* data, int size, const IpAddress& to) noexcept;
+    int sendto(const void* data, size_t size, const IpAddress& to) noexcept;
 
     /**
      * @brief Receives data from a remote sender.
@@ -136,7 +141,7 @@ public:
      * @param from [out] The address of the sender.
      * @return The number of bytes received, or -1 on error.
      */
-    int recvfrom(void* buffer, int maxsize, IpAddress& from) noexcept;
+    int recvfrom(void* buffer, size_t maxsize, IpAddress& from) noexcept;
 
     /**
      * @brief Polls the socket to check if data is available for reading.

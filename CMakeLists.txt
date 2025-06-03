@@ -6,10 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories(.)
 add_library(SimpleUdp STATIC udp/simple_udp.cpp udp/simple_udp.h)
-# export the headers
-set_target_properties(SimpleUdp PROPERTIES
-    PUBLIC_HEADER "udp/simple_udp.h"
-)
+set_target_properties(SimpleUdp PROPERTIES PUBLIC_HEADER "udp/simple_udp.h")
 
-add_executable(SimpleUdpExample test/simple_udp_example.cpp)
+add_executable(SimpleUdpExample examples/udp_echo_server_example.cpp)
 target_link_libraries(SimpleUdpExample PRIVATE SimpleUdp)
